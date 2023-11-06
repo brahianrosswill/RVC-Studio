@@ -1,7 +1,8 @@
 import json
 import os
 from pathlib import Path
-import sys
+
+import urllib.request
 from webui.utils import ObjectNamespace
 from typing import Tuple
 import streamlit as st
@@ -46,15 +47,7 @@ def active_subprocess_list():
                 print(e)
 
 def initial_vocal_separation_params(folder=None):
-    if folder:
-        config_file = os.path.join(os.getcwd(),"configs",folder,"vocal_separation_params.json")
-        os.makedirs(os.path.dirname(config_file),exist_ok=True)
-        if os.path.isfile(config_file):
-            with open(config_file,"r") as f:
-                data = json.load(f)
-                return ObjectNamespace(**data)
-
-    return ObjectNamespace(
+    params = ObjectNamespace(
         preprocess_models=[],
         postprocess_models=[],
         agg=10,
@@ -62,6 +55,19 @@ def initial_vocal_separation_params(folder=None):
         model_paths=[],
         use_cache=True,
     )
+
+    if folder:
+        try:
+            config_file = os.path.join(os.getcwd(),"configs",folder,"vocal_separation_params.json")
+            os.makedirs(os.path.dirname(config_file),exist_ok=True)
+            if os.path.isfile(config_file):
+                with open(config_file,"r") as f:
+                    data = json.load(f)
+                    params.update(data)
+        except Exception as e:
+            print(e)
+    return params
+
 def save_vocal_separation_params(folder,data):
     config_file = os.path.join(os.getcwd(),"configs",folder,"vocal_separation_params.json")
     os.makedirs(os.path.dirname(config_file),exist_ok=True)
@@ -98,15 +104,7 @@ def vocal_separation_form(state):
     return state
 
 def initial_voice_conversion_params(folder=None):
-    if folder:
-        config_file = os.path.join(os.getcwd(),"configs",folder,"voice_conversion_params.json")
-        os.makedirs(os.path.dirname(config_file),exist_ok=True)
-        if os.path.isfile(config_file):
-            with open(config_file,"r") as f:
-                data = json.load(f)
-                return ObjectNamespace(**data)
-            
-    return ObjectNamespace(
+    params = ObjectNamespace(
         f0_up_key=0,
         f0_method=["rmvpe"],
         f0_autotune=False,
@@ -117,16 +115,32 @@ def initial_voice_conversion_params(folder=None):
         rms_mix_rate=.2,
         protect=0.2,
         )
+    if folder:
+        try:
+            config_file = os.path.join(os.getcwd(),"configs",folder,"voice_conversion_params.json")
+            os.makedirs(os.path.dirname(config_file),exist_ok=True)
+            if os.path.isfile(config_file):
+                with open(config_file,"r") as f:
+                    data = json.load(f)
+                    params.update(data)
+        except Exception as e:
+            print(e)
+    return params
+
 def save_voice_conversion_params(folder,data):
     config_file = os.path.join(os.getcwd(),"configs",folder,"voice_conversion_params.json")
     os.makedirs(os.path.dirname(config_file),exist_ok=True)
     with open(config_file,"w") as f:
         return f.write(json.dumps(data,indent=2))
-def voice_conversion_form(state):
+def voice_conversion_form(state, use_hybrid=True):
     state.f0_up_key = st.slider(i18n("inference.f0_up_key"),min_value=-12,max_value=12,value=state.f0_up_key,step=1)
-    state.f0_method = st.multiselect(i18n("inference.f0_method"),
+    if use_hybrid:
+        state.f0_method = st.multiselect(i18n("inference.f0_method"),
+                                            options=PITCH_EXTRACTION_OPTIONS,
+                                            default=state.f0_method)
+    else: state.f0_method = st.selectbox(i18n("inference.f0_method"),
                                         options=PITCH_EXTRACTION_OPTIONS,
-                                        default=state.f0_method)
+                                        index=get_index(PITCH_EXTRACTION_OPTIONS,state.f0_method))
     col1, col2 = st.columns(2)
     state.merge_type = col1.radio(
         i18n("inference.merge_type"),
