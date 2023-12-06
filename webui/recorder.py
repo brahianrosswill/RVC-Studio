@@ -5,9 +5,9 @@ import threading
 import torch
 import webrtcvad
 from rvc_for_realtime import RVC
-from webui.audio import remix_audio
+from lib.audio import remix_audio
 
-from webui.utils import ObjectNamespace, gc_collect
+from lib.utils import ObjectNamespace, gc_collect
 
 # Define a class that can record and play audio chunks in real time
 class RecorderPlayback:

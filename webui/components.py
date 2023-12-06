@@ -1,18 +1,19 @@
+import html
 import json
 import os
 from pathlib import Path
+import random
 
 import urllib.request
-from webui.utils import ObjectNamespace
+from webui.api import get_uvr_models, get_uvr_postprocess_models, get_uvr_preprocess_models
 from typing import Tuple
 import streamlit as st
 
-from webui import PITCH_EXTRACTION_OPTIONS, get_cwd, i18n
+from webui import PITCH_EXTRACTION_OPTIONS
 from webui.contexts import ProgressBarContext
 from webui.downloader import save_file, save_file_generator
-from webui.utils import gc_collect, get_filenames, get_index, get_subprocesses
-
-CWD = get_cwd()
+from lib.utils import gc_collect, get_index, get_subprocesses
+from lib import BASE_DIR, i18n, ObjectNamespace
     
 def __default_mapper(x: Tuple[str,any]):
      return x
@@ -52,13 +53,13 @@ def initial_vocal_separation_params(folder=None):
         postprocess_models=[],
         agg=10,
         merge_type="median",
-        model_paths=[],
+        uvr_models=[],
         use_cache=True,
     )
 
     if folder:
         try:
-            config_file = os.path.join(os.getcwd(),"configs",folder,"vocal_separation_params.json")
+            config_file = os.path.join(BASE_DIR,"configs",folder,"vocal_separation_params.json")
             os.makedirs(os.path.dirname(config_file),exist_ok=True)
             if os.path.isfile(config_file):
                 with open(config_file,"r") as f:
@@ -69,30 +70,31 @@ def initial_vocal_separation_params(folder=None):
     return params
 
 def save_vocal_separation_params(folder,data):
-    config_file = os.path.join(os.getcwd(),"configs",folder,"vocal_separation_params.json")
+    config_file = os.path.join(BASE_DIR,"configs",folder,"vocal_separation_params.json")
     os.makedirs(os.path.dirname(config_file),exist_ok=True)
     with open(config_file,"w") as f:
         return f.write(json.dumps(data,indent=2))
         
 def vocal_separation_form(state):
-    uvr5_models=get_filenames(root=os.path.join(CWD,"models"),name_filters=["vocal","instrument"])
-    uvr5_denoise_models=get_filenames(root=os.path.join(CWD,"models"),name_filters=["echo","reverb","noise"])
+    uvr5_models=get_uvr_models()
+    uvr5_preprocess_models=get_uvr_preprocess_models()
+    uvr5_postprocess_models=get_uvr_postprocess_models()
     
     state.preprocess_models = st.multiselect(
             i18n("inference.preprocess_model"),
-            options=uvr5_denoise_models,
+            options=uvr5_preprocess_models,
             format_func=lambda item: os.path.basename(item),
-            default=[name for name in state.preprocess_models if name in uvr5_denoise_models])
-    state.model_paths = st.multiselect(
-        i18n("inference.model_paths"),
+            default=[name for name in state.preprocess_models if name in uvr5_preprocess_models])
+    state.uvr_models = st.multiselect(
+        i18n("inference.uvr_models"),
         options=uvr5_models,
         format_func=lambda item: os.path.basename(item),
-        default=[name for name in state.model_paths if name in uvr5_models])
+        default=[name for name in state.uvr_models if name in uvr5_models])
     state.postprocess_models = st.multiselect(
             i18n("inference.postprocess_model"),
-            options=uvr5_denoise_models,
+            options=uvr5_postprocess_models,
             format_func=lambda item: os.path.basename(item),
-            default=[name for name in state.postprocess_models if name in uvr5_denoise_models])
+            default=[name for name in state.postprocess_models if name in uvr5_postprocess_models])
     col1, col2, col3 = st.columns(3)
     
     state.merge_type = col2.radio(
@@ -110,14 +112,14 @@ def initial_voice_conversion_params(folder=None):
         f0_autotune=False,
         merge_type="median",
         index_rate=.75,
-        filter_radius=3,
+        # filter_radius=3,
         resample_sr=0,
         rms_mix_rate=.2,
         protect=0.2,
         )
     if folder:
         try:
-            config_file = os.path.join(os.getcwd(),"configs",folder,"voice_conversion_params.json")
+            config_file = os.path.join(BASE_DIR,"configs",folder,"voice_conversion_params.json")
             os.makedirs(os.path.dirname(config_file),exist_ok=True)
             if os.path.isfile(config_file):
                 with open(config_file,"r") as f:
@@ -128,10 +130,11 @@ def initial_voice_conversion_params(folder=None):
     return params
 
 def save_voice_conversion_params(folder,data):
-    config_file = os.path.join(os.getcwd(),"configs",folder,"voice_conversion_params.json")
+    config_file = os.path.join(BASE_DIR,"configs",folder,"voice_conversion_params.json")
     os.makedirs(os.path.dirname(config_file),exist_ok=True)
     with open(config_file,"w") as f:
         return f.write(json.dumps(data,indent=2))
+    
 def voice_conversion_form(state, use_hybrid=True):
     state.f0_up_key = st.slider(i18n("inference.f0_up_key"),min_value=-12,max_value=12,value=state.f0_up_key,step=1)
     if use_hybrid:
@@ -151,7 +154,7 @@ def voice_conversion_form(state, use_hybrid=True):
                                         options=[0,16000,24000,22050,40000,44100,48000],
                                         value=state.resample_sr)
     state.index_rate=st.slider(i18n("inference.index_rate"),min_value=0.,max_value=1.,step=.05,value=state.index_rate)
-    state.filter_radius=st.slider(i18n("inference.filter_radius"),min_value=0,max_value=7,step=1,value=state.filter_radius)
+    # state.filter_radius=st.slider(i18n("inference.filter_radius"),min_value=0,max_value=7,step=1,value=state.filter_radius)
     state.rms_mix_rate=st.slider(i18n("inference.rms_mix_rate"),min_value=0.,max_value=1.,step=.05,value=state.rms_mix_rate)
     state.protect=st.slider(i18n("inference.protect"),min_value=0.,max_value=.5,step=.01,value=state.protect)
     return state
@@ -202,3 +205,48 @@ def file_downloader(params: Tuple[str, str], expected_size=None):
             weights_warning.empty()
         if progress_bar is not None:
             progress_bar.empty()
+
+## Ported from streamlit_tensorboard with modifications
+def st_iframe(url: str, width=None, height=None, scrolling=False):
+    """Embed iframe within a Streamlit app
+    Parameters
+    ----------
+    url: string
+        URL of the server. Defaults to `http://localhost:8188`
+    width: int
+        The width of the frame in CSS pixels. Defaults to container width.
+    height: int
+        The height of the frame in CSS pixels. Defaults to container height.
+    scrolling: bool
+        If True, show a scrollbar when the content is larger than the iframe.
+        Otherwise, do not show a scrollbar. Defaults to False.
+
+    Example
+    -------
+    >>> st_iframe(url="http://localhost:8888", width=1080)
+    """
+
+    frame_id = "swagger-frame-{:08x}".format(random.getrandbits(64))
+    shell = """
+        <iframe id="%HTML_ID%" width="%WIDTH%" height="%HEIGHT%" frameborder="0">
+        </iframe>
+        <script>
+        (function() {
+            const frame = document.getElementById(%JSON_ID%);
+            frame.src = new URL(%URL%, window.location);
+        })();
+        </script>
+    """
+
+    replacements = [
+        ("%HTML_ID%", html.escape(frame_id, quote=True)),
+        ("%JSON_ID%", json.dumps(frame_id)),
+        ("%HEIGHT%", str(height) if height else "100%"),
+        ("%WIDTH%", str(width) if width else "100%"),
+        ("%URL%", json.dumps(url)),
+    ]
+
+    for (k, v) in replacements:
+        shell = shell.replace(k, v)
+
+    return st.components.v1.html(shell, width=width, height=height, scrolling=scrolling)

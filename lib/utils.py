@@ -4,29 +4,16 @@ import glob
 # from importlib.util import LazyLoader, find_spec, module_from_spec
 import multiprocessing
 import os
-import weakref
+import platform
+from time import sleep
 import numpy as np
 import psutil
+import requests
 import torch
-
-from webui import get_cwd
+from lib import ObjectNamespace, get_cwd
 
 torch.manual_seed(1337)
 CWD = get_cwd()
-
-class ObjectNamespace(dict):
-    def __init__(self,**kwargs): super().__init__(kwargs)
-    def __missing__(self, name: str): return None
-    def get(self, name: str, default_value=None): return self.__getitem__(name) if name in self.keys() else default_value
-    def __getattr__(self, name: str): return self.__getitem__(name) if name in self.keys() else None
-    def __getitem__(self, name: str):
-        value = super().__getitem__(name) # get the value from the parent class
-        if isinstance(value, weakref.ref): # check if the value is a weak reference
-            value = value() # call the weak reference object to get the referent
-        return value # return the referent or the original value
-    def __setattr__(self, name: str, value): return self.__setitem__(name, value)
-    def __delattr__(self, name: str): return self.__delitem__(name) if name in self.keys() else None
-    def __delitem__(self, name: str): return super().__delitem__(name) if name in self.keys() else None
 
 def get_subprocesses(pid = os.getpid()):
     # Get a list of all subprocesses started by the current process
@@ -52,10 +39,6 @@ def get_filenames(root=CWD,folder="**",exts=["*"],name_filters=[""]):
         fnames.extend(glob.glob(f"{root}/{folder}/*.{ext}",recursive=True))
     return sorted([ele for ele in fnames if any([nf.lower() in ele.lower() for nf in name_filters])])
 
-def get_rvc_models():
-    fnames = get_filenames(root=os.path.join(CWD,"models"),folder="RVC",exts=["pth","pt"])
-    return fnames
-
 def get_index(arr,value):
     if arr is not None:
         if value in arr: return arr.index(value)
@@ -68,21 +51,11 @@ def get_index(arr,value):
 def gc_collect():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    # import streamlit as st
-    # st.cache_resource.clear()
-    # st.cache_data.clear()
+        torch.cuda.ipc_collect()
+    elif torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+    gc.set_threshold(100,10,1)
     gc.collect()
-
-# def lazyload(name):
-#     if name in sys.modules:
-#         return modules[name]
-#     else:
-#         spec = find_spec(name)
-#         loader = LazyLoader(spec.loader)
-#         module = module_from_spec(spec)
-#         modules[name] = module
-#         loader.exec_module(module)
-#         return module
     
 def get_optimal_torch_device(index = 0) -> torch.device:
     if torch.cuda.is_available():
@@ -95,4 +68,27 @@ def get_optimal_torch_device(index = 0) -> torch.device:
 
 def get_optimal_threads(offset=0):
     cores = multiprocessing.cpu_count() - offset
-    return max(np.floor(cores * (1-psutil.cpu_percent())).astype("int16"),1)
+    return max(np.floor(cores * (1-psutil.cpu_percent())),1)
+
+def pid_is_active(pid: int):        
+    """ Check For the existence of a unix pid. https://stackoverflow.com/a/568285"""
+    try:
+        if platform.system() == "Windows":
+            return psutil.pid_exists(pid)
+        elif platform.system() == "Linux":
+            os.kill(pid, 0)
+    except Exception as e:
+        print(e)
+        return False
+    else:
+        return True
+    
+def poll_url(url,timeout=10):
+    for i in range(timeout): # wait for server to start up
+        try:
+            with requests.get(url) as req:
+                if req.status_code==200: return True
+        except Exception:
+            sleep(1.)
+            print(f"waited {i+1} seconds...")
+    return False

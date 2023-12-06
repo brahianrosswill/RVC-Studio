@@ -5,12 +5,10 @@ import torch
 import os
 from lib.infer_pack.text.cleaners import english_cleaners
 from lib.slicer2 import Slicer
-from webui import get_cwd
 
-from webui.audio import MAX_INT16, load_input_audio, remix_audio
+from lib.audio import MAX_INT16, load_input_audio, remix_audio
+from lib import BASE_MODELS_DIR
 from webui.downloader import BASE_CACHE_DIR, download_file
-
-CWD = get_cwd()
     
 speecht5_checkpoint = "microsoft/speecht5_tts"
 speecht5_vocoder_checkpoint = "microsoft/speecht5_hifigan"
@@ -20,9 +18,9 @@ bark_voice_presets="v2/en_speaker_0"
 tacotron2_checkpoint = "speechbrain/tts-tacotron2-ljspeech"
 hifigan_checkpoint = "speechbrain/tts-hifigan-ljspeech"
 EMBEDDING_CHECKPOINT = "speechbrain/spkrec-xvect-voxceleb"
-os.makedirs(os.path.join(CWD,"models","TTS","embeddings"),exist_ok=True)
-TTS_MODELS_DIR = os.path.join(CWD,"models","TTS")
-STT_MODELS_DIR = os.path.join(CWD,"models","STT")
+os.makedirs(os.path.join(BASE_MODELS_DIR,"TTS","embeddings"),exist_ok=True)
+TTS_MODELS_DIR = os.path.join(BASE_MODELS_DIR,"TTS")
+STT_MODELS_DIR = os.path.join(BASE_MODELS_DIR,"STT")
 DEFAULT_SPEAKER = os.path.join(TTS_MODELS_DIR,"embeddings","Sayano.npy")
 
 def __speecht5__(text, speaker_embedding=None, device="cpu"):
@@ -130,14 +128,14 @@ def __silero__(text, speaker="lj_16khz"):
                         device="cpu")
     return audio[0].cpu().numpy(), 16000
     
-def __vits__(text,speaker=os.path.join(CWD,"models","VITS","pretrained_ljs.pth")):
+def __vits__(text,speaker=os.path.join(BASE_MODELS_DIR,"VITS","pretrained_ljs.pth")):
     from lib.infer_pack.models import SynthesizerTrn
     from lib.infer_pack.text.symbols import symbols
     from lib.infer_pack.text import text_to_sequence
     from lib.infer_pack.commons import intersperse
     from lib import utils
 
-    hps = utils.get_hparams_from_file(os.path.join(CWD,"models","VITS","configs","ljs_base.json"))
+    hps = utils.get_hparams_from_file(os.path.join(BASE_MODELS_DIR,"VITS","configs","ljs_base.json"))
     def get_text(text, hps):
         text_norm = text_to_sequence(text, hps.data.text_cleaners)
         if hps.data.add_blank:

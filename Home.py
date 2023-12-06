@@ -3,24 +3,21 @@ from io import BytesIO
 import os
 from pathlib import Path
 import platform
-import sys
 from pytube import YouTube
 import streamlit as st
-from lib.infer_pack.text.cleaners import english_cleaners
-from webui import MENU_ITEMS, get_cwd, i18n
+from webui import MENU_ITEMS
+from lib import i18n, SONG_DIR, BASE_MODELS_DIR, get_cwd
 st.set_page_config("RVC Studio",layout="centered",menu_items=MENU_ITEMS)
 
-from webui.audio import SUPPORTED_AUDIO
-from webui.utils import get_index
+from lib.audio import SUPPORTED_AUDIO
+from lib.utils import get_index
 
-from tts_cli import STT_MODELS_DIR, stt_checkpoint, load_stt_models
 
 from webui.components import file_downloader, file_uploader_form
 
 
-from webui.downloader import BASE_MODELS, BASE_MODELS_DIR, LLM_MODELS, MDX_MODELS, PRETRAINED_MODELS, RVC_DOWNLOAD_LINK, RVC_MODELS, SONG_DIR, VITS_MODELS, VR_MODELS, download_link_generator, save_file, slugify_filepath
+from webui.downloader import BASE_MODELS, KARAFAN_MODELS, MDX_MODELS, PRETRAINED_MODELS, RVC_DOWNLOAD_LINK, RVC_MODELS, VITS_MODELS, VR_MODELS, download_link_generator, save_file, slugify_filepath
 
-CWD = get_cwd()
 
 from webui.contexts import ProgressBarContext, SessionStateContext
 
@@ -63,7 +60,8 @@ def rvc_index_path_mapper(params):
     else: return (os.path.join(BASE_MODELS_DIR,"RVC",".index",os.path.basename(data_path)), data) # index file
 
 if __name__=="__main__":
-
+    CWD = get_cwd()
+    st.write(f"Current Location: {CWD}")
     model_tab, audio_tab = st.tabs(["Model Download","Audio Download"])
     with model_tab:
         st.title("Download required models")
@@ -101,7 +99,7 @@ if __name__=="__main__":
                 with ProgressBarContext(to_download,file_downloader,"Downloading models") as pb:
                     pb.run()
         with st.expander("Vocal Separation Models"):
-            generator = download_link_generator(RVC_DOWNLOAD_LINK, VR_MODELS+MDX_MODELS)
+            generator = download_link_generator(RVC_DOWNLOAD_LINK, VR_MODELS+MDX_MODELS+KARAFAN_MODELS)
             to_download = render_model_checkboxes(generator)
             if st.button("Download All",key="download-all-vr-models",disabled=len(to_download)==0):
                 with ProgressBarContext(to_download,file_downloader,"Downloading models") as pb:
@@ -111,21 +109,6 @@ if __name__=="__main__":
             to_download = render_model_checkboxes(generator)
             with ProgressBarContext(to_download,file_downloader,"Downloading models") as pb:
                 st.button("Download All",key="download-all-vits-models",disabled=len(to_download)==0,on_click=pb.run)
-
-        with st.expander("Chat Models"):
-            col1, col2 = st.columns(2)
-            stt_path = os.path.join(STT_MODELS_DIR,stt_checkpoint)
-            is_downloaded = os.path.exists(stt_path)
-            col1.checkbox(os.path.basename(stt_path),value=is_downloaded,disabled=True)
-            if col2.button("Download",disabled=is_downloaded,key=stt_path):
-                with st.spinner(f"Downloading {stt_checkpoint} to {stt_path}"):
-                    models = load_stt_models("speecht5") #hacks the from_pretrained downloader
-                    del models
-                    st.experimental_rerun()
-            generator = [(os.path.join(BASE_MODELS_DIR,"LLM",os.path.basename(link)),link) for link in LLM_MODELS]
-            to_download = render_model_checkboxes(generator)
-            with ProgressBarContext(to_download,file_downloader,"Downloading models") as pb:
-                st.button("Download All",key="download-all-chat-models",disabled=len(to_download)==0,on_click=pb.run)
 
     with audio_tab, SessionStateContext("youtube_downloader") as state:
         

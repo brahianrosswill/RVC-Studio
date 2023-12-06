@@ -1,9 +1,7 @@
 from functools import lru_cache
 import os
-import sys
-from config import Config
-from i18n import I18nAuto
 
+from lib import BASE_CACHE_DIR, PersistedDict
 
 MENU_ITEMS = {
     "Get help": "https://github.com/SayanoAI/RVC-Studio/discussions",
@@ -14,21 +12,18 @@ MENU_ITEMS = {
 }
 
 DEVICE_OPTIONS = ["cpu","cuda"]
-PITCH_EXTRACTION_OPTIONS = ["crepe","rmvpe","mangio-crepe","rmvpe+","dio","harvest"]
-# TTS_MODELS = ["edge","vits","speecht5","bark","tacotron2"]
+PITCH_EXTRACTION_OPTIONS = ["crepe","rmvpe","mangio-crepe","rmvpe+"]
 TTS_MODELS = ["edge","speecht5"]
 N_THREADS_OPTIONS=[1,2,4,8,12,16]
 SR_MAP = {"32k": 32000,"40k": 40000, "48k": 48000}
 
 @lru_cache
-def load_config():
-    return Config(), I18nAuto()
+def get_servers():
+    os.makedirs(BASE_CACHE_DIR,exist_ok=True)
+    fname = os.path.join(BASE_CACHE_DIR,"servers.shelve")
+    servers = PersistedDict(fname)
+    return servers
 
-@lru_cache
-def get_cwd():
-    CWD = os.getcwd()
-    if CWD not in sys.path:
-        sys.path.append(CWD)
-    return CWD
-
-config, i18n = load_config()
+SERVERS = get_servers()
+RVC_INFERENCE_URL = SERVERS.RVC_INFERENCE_URL
+UVR_INFERENCE_URL = SERVERS.UVR_INFERENCE_URL
